@@ -241,6 +241,61 @@ def test_splunk_configure_consumes_current_main_gaps_section():
     assert not missing
 
 
+def test_audit_emits_gap_ledger_contract():
+    audit = _read(SKILLS_DIR / "otel-audit" / "SKILL.md")
+    required_terms = [
+        "## Gap Ledger",
+        "gap_id",
+        "required_signals",
+        "owner",
+        "code_surface",
+        "acceptance_criteria",
+        "audit output is a contract",
+        "not background context",
+        "partial",
+    ]
+    missing = [term for term in required_terms if term not in audit]
+    assert not missing
+
+
+def test_instrument_reconciles_audit_gap_contract():
+    instrument = _read(SKILLS_DIR / "otel-instrument" / "SKILL.md")
+    required_terms = [
+        "Audit Gap Contract",
+        "gap_id",
+        "required_signals",
+        "implemented_signals",
+        "remaining_signals",
+        "App-owned + patchable",
+        "Code added + tests",
+        "App-owned but unsafe/too large",
+        "Explicitly split into named follow-up batch",
+        "Provider/platform-owned",
+        "Owner mapped with exact missing source",
+        "Already covered",
+        "Proven with source path and signal name",
+        "cannot say",
+        "covered",
+        "fixed",
+        "closed",
+    ]
+    missing = [term for term in required_terms if term not in instrument]
+    assert not missing
+
+
+def test_splunk_configure_demotes_partial_gap_coverage():
+    skill = _read(SPLUNK_CONFIGURE)
+    required_terms = [
+        "partial closure",
+        "generate detectors only for implemented or proven signals",
+        "Do not imply complete coverage",
+        "remaining_signals",
+        "Instrumentation Prerequisites",
+    ]
+    missing = [term for term in required_terms if term not in skill]
+    assert not missing
+
+
 def test_splunk_configure_no_metrics_still_reports_prerequisites():
     skill = _read(SPLUNK_CONFIGURE)
     required_terms = [

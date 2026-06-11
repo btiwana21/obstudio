@@ -95,7 +95,22 @@ Extract from `.observe/otel.md`:
    - Each row provides: metric name, source, and type (auto/custom)
    - Record all metrics for classification in Step 3
 
-3. **Gaps** from the `## Gaps` section. This is the current-main
+3. **Gap Ledger** from the `## Gap Ledger` section when present. This is the
+   structured handoff contract from `$otel-audit` and `$otel-instrument`:
+   - Parse `gap_id`, status, `required_signals`, owner, `code_surface`, and
+     `acceptance_criteria`.
+   - Treat any row with status `missing` or `partial` as an instrumentation
+     prerequisite unless matching metrics already exist in the Metrics table.
+   - For partial closure or closure matrices that include `remaining_signals`,
+     generate detectors only for implemented or proven signals. Do not imply
+     complete coverage in detector names, descriptions, dashboards, or coverage
+     summaries while required signals remain missing, even when one matching
+     metric exists.
+   - List `remaining_signals` under `Instrumentation Prerequisites` with the
+     owning code surface, provider, platform, deployment source, or exact
+     missing source from the ledger.
+
+4. **Gaps** from the `## Gaps` section. This is the current-main
    `$otel-audit` handoff:
    - Treat each bullet as an instrumentation prerequisite candidate.
    - Infer impact from the wording, available metric evidence, and readiness
@@ -103,7 +118,7 @@ Extract from `.observe/otel.md`:
    - Add missing readiness signals to the generated report instead of creating
      detector placeholders for absent data.
 
-4. **Legacy APM Readiness Coverage** from the `## APM Readiness Coverage`
+5. **Legacy APM Readiness Coverage** from the `## APM Readiness Coverage`
    section when present. Use this only when `## Gaps` is absent:
    - Area
    - Status
@@ -111,7 +126,7 @@ Extract from `.observe/otel.md`:
    - Gap
    - Detection/Localization Impact, or the legacy column name MTTD Impact
 
-5. **Incident Readiness** from the `## Incident Readiness` section when present:
+6. **Incident Readiness** from the `## Incident Readiness` section when present:
    - API/workflow impact
    - dependencies
    - freshness/backpressure
@@ -119,7 +134,7 @@ Extract from `.observe/otel.md`:
    Missing or partial incident-readiness areas become instrumentation
    prerequisites unless matching metrics already exist in the Metrics table.
 
-6. **Detector reliability evidence** from gaps, readiness sections, local alert
+7. **Detector reliability evidence** from gaps, readiness sections, local alert
    config, or incident evidence:
    - missed, flapping, auto-resolved, or no-data alerts
    - detectors that cannot distinguish no traffic from no telemetry
@@ -181,10 +196,16 @@ signals do not collapse into generic RED buckets.
 Skip metrics that match the exclusion rules (auto-instrumented library metrics
 that duplicate custom signals).
 
-For every `## Gaps` entry that is still missing a metric, add an entry to the
-generated report's "Instrumentation Prerequisites" section. Do not generate a
-detector for a missing signal. Recommend `$otel-instrument` with the specific
-coverage area that must be added first.
+For every `## Gap Ledger` row or `## Gaps` entry that is still missing a metric,
+add an entry to the generated report's "Instrumentation Prerequisites" section.
+Do not generate a detector for a missing signal. Recommend `$otel-instrument`
+with the specific coverage area that must be added first.
+
+For partial closure, generate detectors only for implemented or proven signals.
+Do not imply complete coverage from a partially closed audit gap. If a ledger or
+instrumentation closure matrix includes `remaining_signals`, list those signals
+under `Instrumentation Prerequisites` and avoid detector names or dashboard
+headings that claim the whole readiness area is covered.
 
 For legacy APM readiness rows, add prerequisites for every area with status
 `missing` or `partial` when no `## Gaps` entry covers the same area.

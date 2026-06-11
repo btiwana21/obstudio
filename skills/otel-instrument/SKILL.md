@@ -82,11 +82,42 @@ needs to be set up first and continue with the full workflow (Steps 2-3).
 
 ### Audit-Driven Incident Readiness
 
+#### Audit Gap Contract
+
+If `.observe/otel.md` contains `## Gap Ledger`, use that ledger as the source
+of truth. The audit output is a contract, not background context. Start by
+parsing every row into `gap_id`, `required_signals`, `owner`, `code_surface`,
+and `acceptance_criteria`. If the audit predates `## Gap Ledger`, synthesize
+the same fields from `## Gaps` and `## Incident Readiness` before editing code.
+
+Reconcile every audit gap to a required instrumentation result:
+
+| Audit Gap | Required Instrumentation Result |
+|---|---|
+| App-owned + patchable | Code added + tests |
+| App-owned but unsafe/too large | Explicitly split into named follow-up batch |
+| Provider/platform-owned | Owner mapped with exact missing source |
+| Already covered | Proven with source path and signal name |
+
+For each row, produce and maintain a closure matrix:
+`gap_id -> required_signals -> implemented_signals -> tests ->
+remaining_signals -> status`. The final gate is strict: the instrumentation
+pass cannot say `covered`, `fixed`, `closed`, or `complete` unless every
+required signal is either implemented with tests, proven existing with source
+path and signal name, or explicitly owner-mapped with the exact missing source.
+Optimize for honesty over broad progress. Partial closure is acceptable; silent
+partial closure is the bug.
+
 If `.observe/otel.md` contains `## Incident Readiness` rows with `partial` or
 `missing` status and the user asked to instrument, treat those rows as an
 approved request for custom incident-readiness instrumentation. Do not stop
 after auto-instrumentation and do not ask the Step 4 custom-instrumentation
 question for gaps that the repo clearly owns.
+
+When the user asks broadly to apply readiness skills, improve MTTD, or fix
+found gaps, treat the scope as **all discovered app-owned gaps**. Do not select
+one representative or highest-value gap unless the user explicitly narrows the
+scope to that gap.
 
 1. Convert each partial/missing row into candidate signals using
    `../references/incident-readiness.md`.
@@ -94,14 +125,23 @@ question for gaps that the repo clearly owns.
    - **app-owned and patchable**: the code exposes the value accurately and a
      low-cardinality metric/span can be added in an owned handler, client,
      queue, worker, limiter, or health path.
+   - **app-owned but unsafe/too large**: the code owns the signal, but the
+     change cannot be safely completed in the current batch; split it into a
+     named follow-up batch with exact remaining signals.
    - **deployment/platform-owned**: the signal belongs in Helm, Kubernetes,
      Terraform, VM/systemd, load balancer, collector, or runtime telemetry.
+   - **already covered**: the signal exists and is proven with source path and
+     signal name.
    - **unknown owner**: the audit names a dependency/config source that was not
      inspected.
-3. Implement the highest-value app-owned patchable signal per affected area
-   before moving to verification. Prefer workflow outcome/error/latency,
-   dependency timeout/retry/rate-limit/error, queue/backpressure, freshness, or
-   capacity saturation signals that can become detectors.
+3. Implement every safe app-owned patchable signal before moving to
+   verification. Prefer workflow outcome/error/latency, dependency
+   timeout/retry/rate-limit/error, queue/backpressure, freshness, or capacity
+   saturation signals that can become detectors. If the full set is too large
+   for one change, stop and report the scoped batch before editing; otherwise
+   do not leave an app-owned candidate as a follow-up.
+   Keep dependency timeout/retry/rate-limit/error coverage explicit when a
+   downstream dependency is part of the gap.
 4. Also close generic runtime surfaces discovered during the scan:
    - If the target code owns executor services, thread pools, worker pools,
      bounded queues, rejected-execution paths, queue-full handling, or async
@@ -126,10 +166,20 @@ question for gaps that the repo clearly owns.
      low-cardinality version, config version, rollout batch, expected-vs-running,
      and decision outcome dimensions.
 5. Before finalizing, maintain a gap-closure matrix with one row per incident
-   or readiness gap: `gap -> repo evidence -> owner -> code location -> action
-   -> signal names/attributes -> test/verification -> remaining owner`. The
+   or readiness gap: `gap_id -> required_signals -> implemented_signals ->
+   tests -> remaining_signals -> status`, plus repo evidence, owner, code
+   location, action, trace evidence, metric evidence, log/event evidence, signal
+   names/attributes, test/verification, and remaining owner/source. The
+   compatibility form `gap -> repo evidence -> owner -> code location ->
+   action -> trace evidence -> metric evidence -> log/event evidence -> signal
+   names/attributes -> test/verification -> remaining owner` is acceptable only
+   when no structured `gap_id` exists.
    action must be `add instrumentation`, `prove existing instrumentation`, or
    `mark out of scope with owner`.
+   Every discovered gap must resolve to one of those actions before the work is
+   called complete. A final response, audit, or PR description must not say
+   complete, covered, or fixed while any app-owned gap is still only a
+   follow-up.
 6. Do not call incident-readiness instrumentation complete when an app-owned
    executor/backpressure, streaming, auth/edge, freshness/job, dependency, or
    release/config surface remains only listed as a follow-up, unless the user

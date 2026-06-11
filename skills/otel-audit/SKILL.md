@@ -144,7 +144,34 @@ the user asks for faster incident detection/localization, use
 `../references/incident-readiness.md` to check API/workflow, customer-impact,
 dependency, freshness, backpressure, auth/edge, capacity, and release/config
 signals. Add `## Incident Readiness` rows and `## Gaps` entries for missing
-signals that would make incidents faster to detect, route, or localize.
+signals that would make incidents faster to detect, route, or localize. For
+each gap, include the expected instrumentation action:
+`add instrumentation`, `prove existing instrumentation`, or
+`mark out of scope with owner`.
+
+**Gap ledger contract** -- the audit output is a contract, not background context.
+For every app-owned, provider-owned, platform-owned, or already-covered
+readiness gap, create a structured ledger row with: `gap_id`,
+`required_signals`, `owner`, `code_surface`, and `acceptance_criteria`. Use
+stable IDs such as `G1`, `G2`, and split a gap when required signals have
+different owners or acceptance criteria. Required signals must be concrete
+signal names or signal intents, not vague area labels. Use owner values that map
+directly to the instrumentation result categories: `App-owned + patchable`,
+`App-owned but unsafe/too large`, `Provider/platform-owned`, or
+`Already covered`.
+
+Status must be computed against every required signal in the ledger:
+
+| Ledger result | Rule |
+|---|---|
+| `covered` | Every required signal is proven existing with source path and signal name. |
+| `partial` | Some required signals exist, but remaining required signals are named. |
+| `missing` | No required app-owned signal exists. |
+| `owner-mapped` | The repo cannot accurately observe the signal and the provider/platform/deployment owner plus exact missing source is named. |
+
+Do not collapse a partial gap into `covered` because one metric or span exists.
+The ledger is the source of truth for `$otel-instrument` and
+`$splunk-configure`.
 
 **Anti-patterns** -- flag any of these:
 
@@ -264,6 +291,18 @@ incident detection/localization.
 | Freshness/backpressure | {covered / partial / missing} | {lag, age, queue depth, consumer lag, dropped count} | {missing freshness lag, drop reason, oldest age, or paused consumer signal} | {stale data or backlog may not alert before user impact} |
 | Auth/edge/capacity/release | {covered / partial / missing} | {auth/edge, CPU/memory/disk/concurrency capacity, desired-vs-healthy/readiness/startup/healthcheck, `service.version`, `deployment.environment`, `deployment.region`, `deployment.platform`, `container.image.tag`, artifact/config/rollout dimensions} | {missing auth failure class, disk or concurrency saturation, desired-vs-healthy, startup/readiness/healthcheck failure, traffic target health, or release/config context} | {impact cannot be correlated quickly to edge, capacity, platform health, or rollout changes} |
 
+## Gap Ledger
+
+This is the contract for `$otel-instrument` and `$splunk-configure`; do not
+treat it as background context. Use the field names `gap_id`,
+`required_signals`, `owner`, `code_surface`, and `acceptance_criteria` as the
+handoff schema even though the table headers are human-readable.
+
+| Gap ID | Status | Required Signals | Owner | Code Surface | Acceptance Criteria |
+|--------|--------|------------------|-------|--------------|---------------------|
+| G1 | {missing / partial / covered / owner-mapped} | {signal A; signal B; signal C} | {App-owned + patchable / App-owned but unsafe/too large / Provider/platform-owned / Already covered} | {file/path or referenced source} | {code + tests, proof path + signal name, or exact external owner/source} |
+| ... | ... | ... | ... | ... | ... |
+
 ## Gaps
 - {remaining non-RED gaps: missing auto-instrumentation packages, missing
   context propagation, missing OTLP exporter configuration, missing
@@ -292,6 +331,8 @@ Report requirements:
   group-by keys.
 - If incident-readiness coverage is requested or detected, include
   `## Incident Readiness` after `## RED Signals`.
+- Always include `## Gap Ledger` after readiness sections and before `## Gaps`.
+  Every `## Gaps` bullet must map back to a Gap ID.
 - Keep incident-readiness guidance generic: no organization-specific service
   names, incident IDs, customer names, realms, or product-specific workflow
   names.
