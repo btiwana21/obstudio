@@ -5,12 +5,13 @@ description: >-
   on observability coverage gaps. Read-only -- does not modify code.
   Use when the user types $otel-audit, asks about observability gaps,
   wants to assess instrumentation coverage, says "what signals am I
-  missing", "scan this service for observability", or asks about
-  "observability readiness". Do NOT use for implementing code changes --
-  use $otel-instrument instead.
+  missing", "scan this service for observability", asks about
+  "observability readiness", or asks whether instrumentation can make incidents
+  faster to detect or localize. Do NOT use for implementing code changes -- use
+  $otel-instrument instead.
 metadata:
   author: otel-studio
-  version: 0.6.0
+  version: 0.6.1
   category: observability
 ---
 
@@ -29,6 +30,10 @@ is modified.
 - Checking what auto-instrumentation is already wired up
 - Identifying dependencies that lack matching OTel instrumentation
 - Quick health check of an existing OTel setup
+- Assessing whether API/workflow, dependency, data freshness, queue,
+  auth/edge, capacity, and release/config signals can support incident
+  detection and localization
+
 **When NOT to use:** If you want to add instrumentation, use `$otel-instrument`.
 
 ## Process
@@ -47,7 +52,12 @@ Scan the repository to determine language, framework, and existing instrumentati
 2. Identify entry points (`main`, `cmd/`, `app.py`, `index.ts`, etc.)
 3. Enumerate all HTTP routes with method and path pattern (e.g. `GET /tasks`, `POST /tasks`, `GET /tasks/{id}`). List them explicitly in the report.
 4. Use the Auto-Instrumentation Library Map below to identify which packages should be present for each detected dependency.
-5. Record exact evidence paths that should appear in the report:
+5. Detect incident-readiness ownership: user-visible workflows, dependency
+  calls, background processing, queues/streams, data freshness, auth/edge
+  paths, capacity limits, and release/config context. When present or when the
+  user asks for faster incident detection/localization, load
+  `../references/incident-readiness.md`.
+6. Record exact evidence paths that should appear in the report:
   - Dependency manifest: `go.mod`, `package.json`, `pyproject.toml`, `pom.xml`, etc.
   - Process entry point: `main.go`, `cmd/.../main.go`, `app.py`, `app.js`, `TasksApplication.java`, etc.
   - Route source: router/controller files such as `TaskController.java`, `app.py`, `app.js`, or `kvstore/http.go`.
@@ -120,6 +130,7 @@ for Python, `@opentelemetry/instrumentation-winston` /
 derivation? (e.g. `http.server.request.duration` histogram counts, or
 server spans from auto-instrumentation.)
 Status: `covered` / `partial` / `missing`.
+
 - **Errors:** Are span status codes set on failures? Is `recordException`
 called? Do HTTP auto-instrumentation spans capture 5xx status?
 Status: `covered` / `partial` / `missing`.
@@ -127,6 +138,13 @@ Status: `covered` / `partial` / `missing`.
 percentiles? (e.g. `http.server.request.duration` histogram, or span
 duration from auto-instrumentation.)
 Status: `covered` / `partial` / `missing`.
+
+**Incident readiness assessment** -- when incident-readiness evidence exists or
+the user asks for faster incident detection/localization, use
+`../references/incident-readiness.md` to check API/workflow, customer-impact,
+dependency, freshness, backpressure, auth/edge, capacity, and release/config
+signals. Add `## Incident Readiness` rows and `## Gaps` entries for missing
+signals that would make incidents faster to detect, route, or localize.
 
 **Anti-patterns** -- flag any of these:
 
@@ -234,10 +252,25 @@ Status values:
   exist but no histogram for percentile breakdown).
 - **missing** -- no data source provides this signal.
 
+## Incident Readiness
+
+Include when incident-readiness evidence exists or when the user asks for faster
+incident detection/localization.
+
+| Area | Status | Evidence | Gap | Detection/Localization Impact |
+|------|--------|----------|-----|-------------------------------|
+| API/workflow impact | {covered / partial / missing} | {route/workflow spans, latency/error/outcome metrics} | {missing workflow outcome, status code, error class, or latency metric} | {app-down vs degraded workflow remains slow to classify} |
+| Dependencies | {covered / partial / missing} | {client spans/metrics by dependency and operation; endpoint health or target health metrics when available} | {missing retry, timeout, rate-limit, error class, endpoint health, target health, availability, or circuit-breaker state} | {root-cause dependency remains slow to localize} |
+| Freshness/backpressure | {covered / partial / missing} | {lag, age, queue depth, consumer lag, dropped count} | {missing freshness lag, drop reason, oldest age, or paused consumer signal} | {stale data or backlog may not alert before user impact} |
+| Auth/edge/capacity/release | {covered / partial / missing} | {auth/edge, CPU/memory/disk/concurrency capacity, desired-vs-healthy/readiness/startup/healthcheck, `service.version`, `deployment.environment`, `deployment.region`, `deployment.platform`, `container.image.tag`, artifact/config/rollout dimensions} | {missing auth failure class, disk or concurrency saturation, desired-vs-healthy, startup/readiness/healthcheck failure, traffic target health, or release/config context} | {impact cannot be correlated quickly to edge, capacity, platform health, or rollout changes} |
+
 ## Gaps
 - {remaining non-RED gaps: missing auto-instrumentation packages, missing
   context propagation, missing OTLP exporter configuration, missing
-  service.name resource, etc.}
+  service.name resource, missing API/workflow impact, dependency endpoint
+  health, freshness, backpressure, auth/edge, CPU/memory/disk capacity,
+  desired-vs-healthy/readiness/startup/healthcheck, release/config signals,
+  etc.}
 - If no gaps remain, write: "No additional gaps detected."
 
 ## Anti-Patterns
@@ -249,11 +282,24 @@ Status values:
   $otel-instrument for custom business metrics"}
 
 ---
-*Generated by obstudio v0.6.0 otel-audit on {YYYY-MM-DD HH:MM UTC}*
+*Generated by obstudio v0.6.1 otel-audit on {YYYY-MM-DD HH:MM UTC}*
 ```
 
 Report requirements:
 
+- IDs for users, accounts, tenants, sessions, tasks, conversations, and traces
+  may help trace drilldown, but must not be metric dimensions or detector
+  group-by keys.
+- If incident-readiness coverage is requested or detected, include
+  `## Incident Readiness` after `## RED Signals`.
+- Keep incident-readiness guidance generic: no organization-specific service
+  names, incident IDs, customer names, realms, or product-specific workflow
+  names.
+- Treat missing workflow outcome, dependency endpoint health,
+  freshness/backpressure, auth/edge, CPU/memory/disk/concurrency saturation,
+  desired-vs-healthy/readiness/startup/healthcheck, and release/config
+  correlation as gaps only when code or runtime evidence shows the service owns
+  that surface.
 - If instrumentation is incomplete, always include the exact token `$otel-instrument` in the recommendation.
 - If OpenTelemetry is absent, include both words `OpenTelemetry` and `missing`.
 - Name the concrete files that support findings; do not only refer to "the service" or "./service".

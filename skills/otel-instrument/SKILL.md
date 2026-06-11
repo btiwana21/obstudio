@@ -6,10 +6,11 @@ description: >-
   asks to "add OTel", "add tracing", "add metrics", "implement observability",
   "wire up telemetry", "instrument this service", or asks to add a specific
   custom signal like "add a metric to track queue depth", "add a span for
-  payment processing", "track error rate for X".
+  payment processing", "track error rate for X", asks to add signals that make
+  incidents faster to detect or localize.
 metadata:
   author: otel-studio
-  version: 0.1.1
+  version: 0.1.2
   category: observability
 ---
 
@@ -28,8 +29,25 @@ Before editing anything, ground the plan with repo evidence:
 - Confirm the language and framework from actual dependency or source files
 - Confirm the target process from the repo's real start surface: `docker-compose.yml`, Kubernetes manifests, `package.json` scripts, `Makefile`, `Procfile`, PM2 configs, Supervisor configs, systemd units, launchd plists, PowerShell scripts, or a plain shell command
 - Confirm existing telemetry indicators or record `none found`
+- Detect incident-readiness surfaces. Search source and config for user-visible
+  workflows, dependency clients, background jobs, queues/streams, data
+  freshness, auth/edge paths, capacity limits, and release/config context. When
+  present or when the user asks for faster incident detection/localization, load
+  `../references/incident-readiness.md`.
+- When incident reports, postmortems, tickets, alerts, or user-provided failure
+  examples are part of the request, use incident-evidence mode from
+  `../references/incident-readiness.md`: map each failure mechanism to the
+  owning code surface before editing, and judge proposed signals by whether they
+  improve detection, routing, localization, or only documentation.
 - For Java projects, build a trace wiring inventory per `./references/languages/java.md` (Preflight section) and classify as `auto-only`, `custom-with-provider`, `custom-provider-external`, or `missing` before editing.
-- Confirm the planned `service.name` source and `deployment.environment` source
+- Confirm the planned `service.name`, `service.version`,
+  `deployment.environment`, `deployment.region`, `deployment.platform`, and
+  `container.image.tag` or artifact-version sources when those dimensions are
+  available and low-cardinality
+- Prefer existing OTel semantic-convention or platform resource attribute names
+  when they are already emitted. Treat `deployment.region`,
+  `deployment.platform`, and `container.image.tag` as generic context aliases
+  unless the repo already uses those exact attribute names.
 - Distinguish between application repos and tooling repos such as CLIs, MCP servers, workers, libraries, installers, and build tools. Instrument the executable path users or operators actually run today. Do not invent a web app, Docker path, or entrypoint that is not present.
 - If the repo has multiple runnable surfaces, instrument the one the user actually cares about; otherwise ask which one matters
 - If the repo is primarily tooling or library code and no runnable surface is obvious, stop and ask instead of inventing an app shell
@@ -43,7 +61,11 @@ Do not proceed until you can state all of these clearly:
 - environment dimension
 - incremental addition vs new scaffold
 - for Java, trace source of truth (see `./references/languages/java.md` Preflight section)
-
+- incident-readiness surfaces and the workflow/dependency/freshness/backpressure
+  signals to add, when the repo owns those surfaces
+- incident-evidence coverage when incidents are supplied: failure mechanism,
+  owning code surface, signal to add or prove, expected MTTD/localization impact,
+  and remaining non-code or dependency owner
 ### Fast Path: Targeted Custom Signal
 
 If the user is asking for a specific signal ("add a metric for queue depth",
@@ -57,6 +79,65 @@ preflight scan finds OTel SDK already initialized:
 
 If the preflight scan finds no OTel SDK, tell the user auto-instrumentation
 needs to be set up first and continue with the full workflow (Steps 2-3).
+
+### Audit-Driven Incident Readiness
+
+If `.observe/otel.md` contains `## Incident Readiness` rows with `partial` or
+`missing` status and the user asked to instrument, treat those rows as an
+approved request for custom incident-readiness instrumentation. Do not stop
+after auto-instrumentation and do not ask the Step 4 custom-instrumentation
+question for gaps that the repo clearly owns.
+
+1. Convert each partial/missing row into candidate signals using
+   `../references/incident-readiness.md`.
+2. Classify each candidate as:
+   - **app-owned and patchable**: the code exposes the value accurately and a
+     low-cardinality metric/span can be added in an owned handler, client,
+     queue, worker, limiter, or health path.
+   - **deployment/platform-owned**: the signal belongs in Helm, Kubernetes,
+     Terraform, VM/systemd, load balancer, collector, or runtime telemetry.
+   - **unknown owner**: the audit names a dependency/config source that was not
+     inspected.
+3. Implement the highest-value app-owned patchable signal per affected area
+   before moving to verification. Prefer workflow outcome/error/latency,
+   dependency timeout/retry/rate-limit/error, queue/backpressure, freshness, or
+   capacity saturation signals that can become detectors.
+4. Also close generic runtime surfaces discovered during the scan:
+   - If the target code owns executor services, thread pools, worker pools,
+     bounded queues, rejected-execution paths, queue-full handling, or async
+     dispatch, add or prove detector-ready queue depth, active/inflight work,
+     pool capacity, queue wait, rejected/shed work, timeout, and saturation outcome
+     signals.
+   - If the target code owns long-lived connection or streaming surfaces such as
+     WebSocket, SSE, streaming HTTP/RPC, broker streams, or bidirectional client streams,
+     add or prove lifecycle signals for connect/open,
+     authentication/authorization, start/stop/detach/keepalive, close reason
+     family, send/write failure, active connections/channels/streams, and stream
+     duration/outcome. Treat close reason family and stream duration/outcome as
+     required lifecycle signals when the code owns the stream.
+   - If the target code owns auth, identity, token, secret, certificate, domain,
+     or edge-routing flows, add or prove lifecycle, failure reason family,
+     expiry/rotation, and route/config mismatch signals.
+   - If the target code owns scheduled jobs, reports, exports, notifications,
+     ingestion, sync, or derived data, add or prove last-success timestamp,
+     freshness/age, duration, output count, dropped/skipped reason, and
+     publish/consume outcome signals.
+   - If the target code owns rollout/config/feature-flag decisions, add or prove
+     low-cardinality version, config version, rollout batch, expected-vs-running,
+     and decision outcome dimensions.
+5. Before finalizing, maintain a gap-closure matrix with one row per incident
+   or readiness gap: `gap -> repo evidence -> owner -> code location -> action
+   -> signal names/attributes -> test/verification -> remaining owner`. The
+   action must be `add instrumentation`, `prove existing instrumentation`, or
+   `mark out of scope with owner`.
+6. Do not call incident-readiness instrumentation complete when an app-owned
+   executor/backpressure, streaming, auth/edge, freshness/job, dependency, or
+   release/config surface remains only listed as a follow-up, unless the user
+   explicitly narrowed scope.
+7. If no app-owned candidate is safe to patch, make no placeholder instruments.
+   Instead, update the report or final response with `no safe app-owned
+   incident-readiness patch found`, list the missing owner/source, and name the
+   exact signal that remains a prerequisite for `$splunk-configure`.
 
 ### 2. Dependencies
 
@@ -97,7 +178,21 @@ Apply auto-instrumentation first, then add manual spans for key business operati
 - HTTP server instrumentation must produce request-duration metrics as well as spans. Accept the current stable metric `http.server.request.duration` and the older `http.server.duration` name where SDK versions differ.
 - For local, Docker, and eval-style runtime checks, configure metric export to flush quickly. When constructing a metric reader manually, use the language equivalent of `OTEL_METRIC_EXPORT_INTERVAL` with a safe local default of `1000` ms and `OTEL_METRIC_EXPORT_TIMEOUT` with a safe local default of `500` ms instead of relying on SDK defaults.
 - Strictly adhere to OTel [semantic conventions](https://opentelemetry.io/docs/specs/semconv/) for span and metric naming and attributes for domains where such semantic conventions are defined.
-- For domains where OTel semantic conventions exist, emit required spans and metrics only, with required attributes only. Do not emit spans or metrics that are marked optional, do not include attributes that are marked optional. Do not invent custom spans, metrics or attributes in domains where OTel semantic conventions exist.
+- For domains where OTel semantic conventions exist, use semantic-convention
+  names and attributes. Start with required spans, metrics, and attributes; add
+  recommended optional metrics or attributes only when a requested readiness
+  signal depends on them, the service can observe the values accurately, and
+  privacy/cardinality rules allow them. Do not invent custom spans, metrics, or
+  attributes in domains where OTel semantic conventions exist.
+- For incident-readiness work, follow `../references/incident-readiness.md`:
+  instrument only code-evidenced API/workflow, customer-impact, dependency,
+  freshness, backpressure, auth/edge, capacity, and release/config surfaces;
+  prefer semantic-convention HTTP/RPC/database/messaging/runtime signals; add
+  custom workflow, lag, freshness, outcome, retry, timeout, rate-limit,
+  endpoint-health, target-health, drop-reason, circuit-breaker, CPU/memory/disk
+  saturation, desired-vs-healthy, startup/readiness/healthcheck failure,
+  traffic target health, and release/config signals only when the service owns
+  and can observe them accurately.
 - For custom attribute names use `{domain}.{noun}.{adjective}` format.
 - Span names must be low-cardinality (no IDs, no variable path segments).
 - Metric attributes must avoid high cardinality.
@@ -151,6 +246,12 @@ After auto-instrumentation is wired up, prompt the user:
 
 Then wait for the user's answer.
 
+Skip this prompt when the user already asked for a specific custom signal,
+incident-readiness work, or when the Audit-Driven Incident Readiness path
+applies. In those cases, the user's request and audit gaps are the approval
+context; implement the safe scoped signals and clearly list any unpatched
+prerequisites.
+
 - **If no**: proceed to the build check (Step 5).
 - **If yes**: analyze the codebase for high-value custom instrumentation points:
   - Error handling paths that catch and handle exceptions
@@ -158,6 +259,18 @@ Then wait for the user's answer.
   - External calls not covered by auto-instrumentation libraries
   - Background workers and scheduled jobs
   - Cache interactions without auto-instrumentation support
+  - Incident-readiness boundaries: customer-impact workflow outcome, dependency
+    retry/timeout/rate-limit/error class, dependency endpoint or target health,
+    data freshness, queue depth/lag/oldest age, auth/edge failure class,
+    CPU/memory/disk/concurrency saturation, desired-vs-healthy,
+    startup/readiness/healthcheck failure, traffic target health, and
+    release/config context when code evidence exists
+  - Incident-evidence boundaries: every incident mechanism supplied by the user
+    or available in local reports must map to either added/proven code-owned
+    signals or an explicit external owner; do not stop at generic endpoint
+    metrics when the incident mechanism was auth handshake, secret expiry,
+    output freshness, rollout skew, dependency target health, or pool
+    saturation
   - Suggest specific spans and metrics with names, attributes, and rationale
   - Apply after user approval
 
@@ -197,7 +310,17 @@ This step is REQUIRED whenever `.vscode/launch.json` exists.
 - In the final response, separate file changes from verified outcomes
 - If verification is partial, say exactly what is working and what is still missing instead of reporting full success
 - Always include the service-name configuration, OTLP endpoint configuration, and which automatic spans/metrics are expected from the instrumentation.
-
+- For incident-readiness work, state which workflow, dependency, freshness,
+  backpressure, auth/edge, capacity, and release/config signals were added and
+  which gaps remain prerequisites for `$splunk-configure`.
+- For incident-evidence work, include a concise coverage summary explaining
+  whether each incident class would likely improve MTTD, improve localization
+  only, or remain uncovered.
+- Include exact deployment-context dimensions that were wired, such as
+  `service.version`, `deployment.environment`, `deployment.region`,
+  `deployment.platform`, `container.image.tag`, artifact version, config
+  version, and rollout/canary id, or state which ones were not available from
+  the repo.
 ## Credential Safety
 
 When the project uses or introduces env files:
